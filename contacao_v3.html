@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <!-- Configurações básicas do documento -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotações de Ativos - B3 e Bitcoin</title>
+    
+    <!-- Tailwind CSS: Framework de CSS para estilização rápida e moderna -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Importa a fonte 'Inter' para um visual mais limpo -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js: Biblioteca para a criação dos gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        /* Define a fonte 'Inter' como padrão para todo o corpo do documento */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Animação de 'pulse' para os placeholders de carregamento */
+        @keyframes pulse {
+            50% {
+                opacity: .5;
+            }
+        }
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+
+    <!-- Container principal que centraliza o conteúdo -->
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-6xl">
+
+        <!-- Cabeçalho da página -->
+        <header class="mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-cyan-400">Painel de Cotações</h1>
+            <p class="text-gray-400 mt-1">Ativos da B3 e Criptomoedas em tempo real.</p>
+        </header>
+
+        <!-- Seção dedicada ao Bitcoin -->
+        <section id="bitcoin-section" class="mb-8">
+            <h2 class="text-2xl font-semibold mb-4 border-l-4 border-cyan-400 pl-3">Bitcoin (BTC)</h2>
+            <!-- Container para o card de preço do Bitcoin -->
+            <div id="bitcoin-container">
+                <!-- Placeholder de carregamento para o card de preço -->
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg animate-pulse h-24"></div>
+            </div>
+            <!-- Container para o gráfico de histórico do Bitcoin -->
+            <div id="bitcoin-chart-container" class="mt-4 bg-gray-800 p-4 rounded-lg shadow-lg">
+                <canvas id="bitcoin-chart"></canvas>
+            </div>
+        </section>
+
+        <!-- Seção dedicada aos ativos da B3 -->
+        <section id="b3-section">
+            <h2 class="text-2xl font-semibold mb-4 border-l-4 border-cyan-400 pl-3">Bolsa de Valores (B3)</h2>
+            <!-- Container onde os cards das ações da B3 serão inseridos via JavaScript -->
+            <div id="b3-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <!-- Placeholders de carregamento para os cards das ações -->
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg animate-pulse h-48"></div>
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg animate-pulse h-48"></div>
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg animate-pulse h-48"></div>
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg animate-pulse h-48"></div>
+            </div>
+        </section>
+
+        <!-- Rodapé da página -->
+        <footer class="text-center mt-12 text-gray-500 text-sm">
+            <p id="last-updated">Carregando dados...</p>
+        </footer>
+
+    </div>
+
+    <script>
+        // =================================================================================
+        // SEÇÃO DE CONFIGURAÇÃO
+        // =================================================================================
+
+        // Lista de tickers da B3 que serão exibidos. Você pode adicionar ou remover ativos aqui.
+        const B3_TICKERS = ['PETR4'];
+        
+        // Endpoints (URLs) das APIs de onde os dados são buscados.
+        const BITCOIN_API_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd';
+        const BITCOIN_HISTORY_API_URL = 'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=30&interval=daily';
+
+        // Token de autenticação para a API da Brapi.
+        // É recomendado usar um token para evitar limites de requisição. Obtenha o seu em brapi.dev.
+        const brapiToken = 'c4Z6bz5zHLjjoZCL6wm8tF';
+
+        // =================================================================================
+        // ESTADO GLOBAL E ELEMENTOS DO DOM
+        // =================================================================================
+
+        // Variável para armazenar a instância do gráfico do Bitcoin, permitindo destruí-la antes de recriar.
+        let bitcoinChartInstance = null;
+
+        // Seleciona os elementos do HTML que serão manipulados pelo JavaScript.
+        const bitcoinContainer = document.getElementById('bitcoin-container');
+        const b3Container = document.getElementById('b3-container');
+        const lastUpdatedElement = document.getElementById('last-updated');
+
+        // =================================================================================
+        // FUNÇÕES AUXILIARES (HELPERS)
+        // =================================================================================
+
+        /**
+         * Formata um número para uma string de moeda.
+         * @param {number} value O número a ser formatado.
+         * @param {string} locale O padrão de localidade (ex: 'pt-BR' para Real, 'en-US' para Dólar).
+         * @param {string} currency O código da moeda (ex: 'BRL', 'USD').
+         * @returns {string} O valor formatado como moeda.
+         */
+        function formatCurrency(value, locale = 'pt-BR', currency = 'BRL') {
+            if (typeof value !== 'number') return 'N/A';
+            return new Intl.NumberFormat(locale, {
+                style: 'currency',
+                currency: currency
+            }).format(value);
+        }
+
+        /**
+         * Formata um número para uma string de porcentagem com cor.
+         * @param {number} value O número da porcentagem.
+         * @returns {{value: string, colorClass: string}} Um objeto contendo a string formatada e a classe de cor do Tailwind.
+         */
+        function formatPercentage(value) {
+            if (typeof value !== 'number') return { value: 'N/A', colorClass: 'text-gray-400' };
+            const colorClass = value >= 0 ? 'text-green-400' : 'text-red-500';
+            const sign = value > 0 ? '+' : '';
+            return {
+                value: `${sign}${value.toFixed(2)}%`,
+                colorClass: colorClass
+            };
+        }
+
+        // =================================================================================
+        // FUNÇÕES DE RENDERIZAÇÃO (UI)
+        // =================================================================================
+
+        /**
+         * Renderiza o card com o preço atual do Bitcoin.
+         * @param {object} data Os dados recebidos da API CoinGecko.
+         */
+        function renderBitcoin(data) {
+            const price = data?.bitcoin?.usd;
+            const priceFormatted = formatCurrency(price, 'en-US', 'USD');
+
+            bitcoinContainer.innerHTML = `
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg flex items-center justify-between transition-transform transform hover:scale-105">
+                    <div class="flex items-center">
+                        <svg class="w-10 h-10 mr-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm1.12 10.12l-2.88 2.88a1 1 0 01-1.41-1.41l2.88-2.88-1.47-1.47a1 1 0 010-1.41l2.88-2.88a1 1 0 111.41 1.41l-2.88 2.88 1.47 1.47a1 1 0 010 1.41zM11 6h-1v2h1V6zm0 6h-1v2h1v-2z"></path></svg>
+                        <div>
+                            <p class="text-xl font-bold">Bitcoin (BTC)</p>
+                            <p class="text-gray-400">Criptomoeda (USD)</p>
+                        </div>
+                    </div>
+                    <p class="text-2xl font-bold">${priceFormatted}</p>
+                </div>
+            `;
+        }
+
+        /**
+         * Renderiza o gráfico de histórico de preços do Bitcoin.
+         * @param {object} historyData Os dados de histórico recebidos da API CoinGecko.
+         */
+        function renderBitcoinChart(historyData) {
+            const ctx = document.getElementById('bitcoin-chart').getContext('2d');
+            
+            if (bitcoinChartInstance) {
+                bitcoinChartInstance.destroy();
+            }
+
+            const labels = historyData.prices.map(pricePoint => new Date(pricePoint[0]).toLocaleDateString('pt-BR'));
+            const data = historyData.prices.map(pricePoint => pricePoint[1]);
+
+            bitcoinChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Preço do Bitcoin (USD) - Últimos 30 dias',
+                        data: data,
+                        borderColor: '#facc15', 
+                        backgroundColor: 'rgba(250, 204, 21, 0.1)',
+                        fill: true,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        y: {
+                            ticks: {
+                                callback: function(value) { return '$' + value.toLocaleString('en-US'); },
+                                color: '#9ca3af'
+                            },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        x: {
+                            ticks: { color: '#9ca3af' },
+                             grid: { display: false }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#d1d5db' } }
+                    }
+                }
+            });
+        }
+        
+        /**
+         * Renderiza os cards das ações da B3.
+         * @param {Array<object>} stocks Uma lista de objetos, cada um representando uma ação.
+         */
+        function renderB3(stocks) {
+            if (!stocks || stocks.length === 0) {
+                b3Container.innerHTML = `<div class="bg-gray-800 p-6 rounded-lg shadow-lg text-red-500 col-span-full">Falha ao carregar dados da B3.</div>`;
+                return;
+            }
+
+            b3Container.innerHTML = stocks.map(stock => {
+                const price = formatCurrency(stock.regularMarketPrice);
+                const change = formatPercentage(stock.regularMarketChangePercent);
+
+                return `
+                    <div class="bg-gray-800 p-5 rounded-lg shadow-lg flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-start">
+                                <p class="text-xl font-bold text-cyan-400">${stock.symbol}</p>
+                                <p class="font-semibold ${change.colorClass}">${change.value}</p>
+                            </div>
+                            <p class="text-gray-400 text-sm truncate" title="${stock.longName || ''}">${stock.longName || 'Nome não disponível'}</p>
+                            <p class="text-3xl font-bold mt-2 self-start">${price}</p>
+                        </div>
+                        <div class="mt-4 h-20 w-full">
+                            <canvas id="chart-${stock.symbol}"></canvas>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Após inserir o HTML, chama a função para criar os gráficos de cada ação.
+            stocks.forEach(stock => {
+                if (stock.historicalDataPrice && stock.historicalDataPrice.length > 0) {
+                    createB3Chart(stock);
+                }
+            });
+        }
+
+        /**
+         * Cria um mini-gráfico para uma ação da B3.
+         * @param {object} stock O objeto da ação contendo os dados históricos.
+         */
+        function createB3Chart(stock) {
+            const ctx = document.getElementById(`chart-${stock.symbol}`).getContext('2d');
+            if (!ctx) return;
+
+            const labels = stock.historicalDataPrice.map(d => new Date(d.date * 1000).toLocaleDateString('pt-BR'));
+            const data = stock.historicalDataPrice.map(d => d.close);
+
+            const changePercent = stock.regularMarketChangePercent || 0;
+            const chartColor = changePercent >= 0 ? '#22c55e' : '#ef4444'; // Verde para alta, Vermelho para baixa
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Preço (BRL)',
+                        data: data,
+                        borderColor: chartColor,
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.4,
+                        pointRadius: 0 // Remove os pontos do gráfico para um visual mais limpo
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { display: false }, x: { display: false } }, // Oculta os eixos
+                    plugins: { legend: { display: false } } // Oculta a legenda
+                }
+            });
+        }
+
+        // =================================================================================
+        // LÓGICA PRINCIPAL DE BUSCA DE DADOS
+        // =================================================================================
+        
+        /**
+         * Função principal que orquestra a busca de dados de todas as fontes (APIs).
+         * As chamadas são feitas de forma independente para maior robustez.
+         */
+        async function fetchData() {
+            console.log('Buscando novos dados...');
+            lastUpdatedElement.textContent = 'Atualizando dados...';
+            let isAnyDataFetched = false;
+
+            // --- Busca dados do Bitcoin (preço e histórico) ---
+            try {
+                // Usa Promise.all para buscar preço e histórico simultaneamente, otimizando o tempo.
+                const [priceResponse, historyResponse] = await Promise.all([
+                    fetch(BITCOIN_API_URL),
+                    fetch(BITCOIN_HISTORY_API_URL)
+                ]);
+
+                if (!priceResponse.ok) throw new Error('A requisição de preço do Bitcoin falhou');
+                if (!historyResponse.ok) throw new Error('A requisição de histórico do Bitcoin falhou');
+
+                const priceData = await priceResponse.json();
+                const historyData = await historyResponse.json();
+                
+                renderBitcoin(priceData);
+                renderBitcoinChart(historyData);
+                isAnyDataFetched = true;
+
+            } catch (error) {
+                console.error("Erro ao buscar dados do Bitcoin:", error);
+                bitcoinContainer.innerHTML = `<div class="bg-gray-800 p-6 rounded-lg shadow-lg text-red-500">Falha ao carregar dados do Bitcoin.</div>`;
+                document.getElementById('bitcoin-chart-container').style.display = 'none';
+            }
+
+            // --- Busca dados da B3 ---
+            // A URL agora pede um range de 1 mês (1mo) para poder construir os gráficos.
+            const B3_API_URL = `https://brapi.dev/api/quote/${B3_TICKERS.join(',')}?range=1mo&interval=1d&token=${brapiToken}`;
+            try {
+                const b3Response = await fetch(B3_API_URL);
+                if (!b3Response.ok) throw new Error(`A requisição à API da B3 falhou com status: ${b3Response.status}`);
+                const b3Data = await b3Response.json();
+                
+                if (b3Data.error) {
+                    throw new Error(b3Data.message || 'A API da Brapi retornou um erro interno.');
+                }
+
+                renderB3(b3Data.results);
+                isAnyDataFetched = true;
+            } catch (error) {
+                console.error("Erro ao buscar dados da B3:", error);
+                b3Container.innerHTML = `<div class="bg-gray-800 p-6 rounded-lg shadow-lg text-red-500 col-span-full">Falha ao carregar dados da B3. Detalhes: ${error.message}</div>`;
+            }
+            
+            // Atualiza o rodapé com a data e hora da última atualização bem-sucedida.
+            if (isAnyDataFetched) {
+                const now = new Date();
+                lastUpdatedElement.textContent = `Última atualização: ${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR')}`;
+            } else {
+                lastUpdatedElement.textContent = 'Falha ao carregar todos os dados.';
+            }
+        }
+        
+        // =================================================================================
+        // INICIALIZAÇÃO
+        // =================================================================================
+
+        // Adiciona um 'ouvinte' que espera o conteúdo da página ser totalmente carregado para então executar o código.
+        document.addEventListener('DOMContentLoaded', () => {
+            // Chama a função de busca de dados pela primeira vez.
+            fetchData();
+            // Configura um intervalo para chamar a função fetchData a cada 10 minutos (600000 ms), atualizando os dados automaticamente.
+            setInterval(fetchData, 600000);
+        });
+    </script>
+</body>
+</html>
