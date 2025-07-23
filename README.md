@@ -2,7 +2,7 @@
 
 Um painel simples e moderno para visualizar cotações de ativos da Bolsa de Valores (B3) e o preço do Bitcoin em tempo real. Este projeto foi criado como parte do meu portfólio para demonstrar habilidades em desenvolvimento front-end.
 
-**Acesse a versão ao vivo:** [https://luizgustavorodriguesdev.github.io/painel-de-cotacoes/](https://luizgustavorodriguesdev.github.io/painel-de-cotacoes/)
+**Acesse a versão ao vivo:** [https://luizgustavorodriguesdev.github.io/cotacao_acoes_bit/](https://luizgustavorodriguesdev.github.io/cotacao_acoes_bit/)
 
 ## ✨ Funcionalidades
 
@@ -24,6 +24,6 @@ Um painel simples e moderno para visualizar cotações de ativos da Bolsa de Val
 
 ## 🔧 Como Executar Localmente
 
-1. Clone este repositório: `git clone https://github.com/SEU-USUARIO/painel-de-cotacoes.git`
-2. Navegue até a pasta do projeto: `cd painel-de-cotacoes`
+1. Clone este repositório: `git clone https://github.com/SEU-USUARIO/cotacao_acoes_bit.git`
+2. Navegue até a pasta do projeto: `cd cotacao_acoes_bit`
 3. Abra o arquivo `index.html` em seu navegador
